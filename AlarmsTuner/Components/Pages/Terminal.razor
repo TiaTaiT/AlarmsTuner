@@ -1,0 +1,168 @@
+@page "/terminal"
+@using AlarmsTuner.Services
+@using AlarmsTuner.Models
+@inject IUsbTerminalService TerminalService
+@inject IJSRuntime JSRuntime
+@implements IDisposable
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4 terminal-container">
+    <MudText Typo="Typo.h4" GutterBottom="true">Virtual COM Port Terminal</MudText>
+
+    <MudGrid>
+        <MudItem xs="12" md="8">
+            <MudPaper Class="pa-4 d-flex flex-column" Elevation="3" Style="height: 60vh;">
+                <MudText Typo="Typo.h6" Class="mb-2">Log Output</MudText>
+                
+                <div id="terminal-log-container" class="flex-grow-1 overflow-auto pa-2 mud-background-gray rounded" style="font-family: monospace;">
+                    @foreach (var msg in TerminalService.History)
+                    {
+                        var colorClass = msg.IsSent ? "mud-tertiary-text" : "mud-primary-text";
+                        var alignClass = msg.IsSent ? "text-end" : "text-start";
+                        var icon = msg.IsSent ? Icons.Material.Filled.ArrowUpward : Icons.Material.Filled.ArrowDownward;
+
+                        <div class="d-flex align-center @alignClass mb-1">
+                            <span class="mud-typography-subtitle2 mud-text-secondary mr-2" style="font-size: 0.75rem;">
+                                [@msg.Timestamp.ToString("HH:mm:ss.fff")]
+                            </span>
+                            <MudIcon Icon="@icon" Size="Size.Small" Class="@($"{colorClass} mr-2")" />
+                            <span class="@colorClass">@msg.Text</span>
+                        </div>
+                    }
+                </div>
+
+                <div class="d-flex align-center mt-4">
+                    <MudTextField @bind-Value="commandInput" 
+                                  Label="Send Command" 
+                                  Variant="Variant.Outlined" 
+                                  Disabled="!TerminalService.IsConnected"
+                                  OnKeyDown="HandleKeyDown"
+                                  Immediate="true"
+                                  Class="flex-grow-1 mr-2" />
+                    <MudButton Variant="Variant.Filled" 
+                               Color="Color.Primary" 
+                               Disabled="string.IsNullOrWhiteSpace(commandInput) || !TerminalService.IsConnected"
+                               OnClick="SendCommand">
+                        Send
+                    </MudButton>
+                </div>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" md="4">
+            <MudPaper Class="pa-4" Elevation="3">
+                <MudText Typo="Typo.h6" Class="mb-2">Connection Settings</MudText>
+                
+                <div class="d-flex align-center mb-4">
+                    <MudSelect T="string" Label="Select Port" @bind-Value="selectedPort" Disabled="TerminalService.IsConnected" Variant="Variant.Outlined" Class="flex-grow-1 mr-2">
+                        @foreach (var port in availablePorts)
+                        {
+                            <MudSelectItem Value="@port">@port</MudSelectItem>
+                        }
+                    </MudSelect>
+                    
+                    <MudTooltip Text="Refresh Ports">
+                        <MudIconButton Icon="@Icons.Material.Filled.Refresh" 
+                                       Color="Color.Primary" 
+                                       Variant="Variant.Outlined"
+                                       Disabled="TerminalService.IsConnected"
+                                       OnClick="RefreshPorts" />
+                    </MudTooltip>
+                </div>
+
+                <MudButton Variant="Variant.Filled" 
+                           Color="@(TerminalService.IsConnected ? Color.Error : Color.Success)" 
+                           FullWidth="true"
+                           OnClick="ToggleConnection">
+                    @(TerminalService.IsConnected ? "Disconnect" : "Connect")
+                </MudButton>
+
+                <MudDivider Class="my-4" />
+
+                <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                    Status: @(TerminalService.IsConnected ? $"Connected to {selectedPort}" : "Disconnected")
+                </MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+</MudContainer>
+
+<style>
+    .terminal-container {
+        height: calc(100vh - 80px); /* Adjust based on your Nav/App bar height */
+    }
+</style>
+
+@code {
+    private string commandInput = "";
+    private string selectedPort = "";
+    private IEnumerable<string> availablePorts = Array.Empty<string>();
+
+    protected override void OnInitialized()
+    {
+        TerminalService.StateChanged += OnStateChanged;
+        RefreshPorts();
+    }
+
+    public void Dispose()
+    {
+        TerminalService.StateChanged -= OnStateChanged;
+    }
+
+    private void RefreshPorts()
+    {
+        availablePorts = TerminalService.GetAvailablePorts();
+        if (availablePorts.Any() && !availablePorts.Contains(selectedPort))
+        {
+            selectedPort = availablePorts.First();
+        }
+    }
+
+    private async void OnStateChanged()
+    {
+        await InvokeAsync(StateHasChanged);
+        await ScrollToBottom();
+    }
+
+    private async Task ToggleConnection()
+    {
+        if (TerminalService.IsConnected)
+        {
+            await TerminalService.DisconnectAsync();
+        }
+        else
+        {
+            await TerminalService.ConnectAsync(selectedPort);
+        }
+    }
+
+    private async Task SendCommand()
+    {
+        if (!string.IsNullOrWhiteSpace(commandInput) && TerminalService.IsConnected)
+        {
+            await TerminalService.SendCommandAsync(commandInput);
+            commandInput = ""; // Clear input after sending
+        }
+    }
+    
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await SendCommand();
+        }
+    }
+
+    private async Task ScrollToBottom()
+    {
+        // Use a simple JS interop script evaluated directly to scroll the div
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("eval", 
+            "var elem = document.getElementById('terminal-log-container'); if(elem) { elem.scrollTop = elem.scrollHeight; }");
+        }
+        catch (Exception)
+        {
+            // Ignore if JS not fully ready or element not found
+        }
+    }
+}

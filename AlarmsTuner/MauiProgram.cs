@@ -18,6 +18,9 @@ namespace AlarmsTuner
             builder.Services.AddMauiBlazorWebView();
             builder.Services.AddMudServices();
             builder.Services.AddMudBlazorDialog();
+            
+            // Register Virtual COM Port Terminal Service
+            builder.Services.AddSingleton<AlarmsTuner.Services.IUsbTerminalService, AlarmsTuner.Services.UsbTerminalService>();
 
 #if DEBUG
     		builder.Services.AddBlazorWebViewDeveloperTools();
