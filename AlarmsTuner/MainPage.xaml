@@ -3,7 +3,8 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:local="clr-namespace:AlarmsTuner"
              xmlns:components="clr-namespace:AlarmsTuner.Components"
-             x:Class="AlarmsTuner.MainPage">
+             x:Class="AlarmsTuner.MainPage"
+             SafeAreaEdges="All">
 
     <BlazorWebView x:Name="blazorWebView" HostPage="wwwroot/index.html">
         <BlazorWebView.RootComponents>
@@ -12,3 +13,4 @@
     </BlazorWebView>
 
 </ContentPage>
+
