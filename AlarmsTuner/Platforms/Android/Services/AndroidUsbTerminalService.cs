@@ -4,8 +4,6 @@ using Android.App;
 using Android.Content;
 using Android.Hardware.Usb;
 using Anotherlab.UsbSerialForAndroid.Driver;
-using Anotherlab.UsbSerialForAndroid.Extensions;
-using Anotherlab.UsbSerialForAndroid.Util;
 using System.Collections.ObjectModel;
 using Application = Android.App.Application;
 
@@ -13,7 +11,11 @@ namespace AlarmsTuner.Services;
 
 public class AndroidUsbTerminalService : IUsbTerminalService
 {
-    public ObservableCollection<TerminalMessage> History { get; } = new();
+    // STM32 Firmware VID(0x16C0) and PID(0x27DD)
+    private const int VendorId = 0x16C0;
+    private const int ProductId = 0x27DD;
+
+    public ObservableCollection<TerminalMessage> History { get; } = [];
 
     private bool _isConnected;
     public bool IsConnected
@@ -32,7 +34,7 @@ public class AndroidUsbTerminalService : IUsbTerminalService
     public event Action? StateChanged;
 
     private UsbManager? _usbManager;
-    private UsbSerialPort? _port;           // Notice: "I" prefix removed
+    private UsbSerialPort? _port;
     private CancellationTokenSource? _readCts;
 
     public AndroidUsbTerminalService()
@@ -42,10 +44,10 @@ public class AndroidUsbTerminalService : IUsbTerminalService
 
     public IEnumerable<string> GetAvailablePorts()
     {
-        if (_usbManager == null) return Array.Empty<string>();
+        if (_usbManager == null) return [];
 
-        // Create the prober using the default table
-        var prober = new UsbSerialProber(UsbSerialProber.DefaultProbeTable);
+        // Use the custom prober here
+        var prober = GetCustomProber();
         var availableDrivers = prober.FindAllDrivers(_usbManager);
 
         var ports = new List<string>();
@@ -63,22 +65,15 @@ public class AndroidUsbTerminalService : IUsbTerminalService
 
         try
         {
-            var prober = new UsbSerialProber(UsbSerialProber.DefaultProbeTable);
-
-            // Use the Async version recommended for modern MAUI
-            var availableDrivers = await prober.FindAllDriversAsync(_usbManager);
-            var driver = availableDrivers.FirstOrDefault(d => d.Device.DeviceName == portName);
-
-            if (driver == null)
-            {
-                throw new Exception("Device not found or disconnected.");
-            }
-
+            var prober = GetCustomProber();
+            var availableDrivers = prober.FindAllDrivers(_usbManager);
+            var driver = availableDrivers.FirstOrDefault(d => d.Device.DeviceName == portName) ?? throw new Exception("Device not found or disconnected.");
+            
             _port = driver.Ports[0];
 
             if (!_usbManager.HasPermission(driver.Device))
             {
-                var intent = new Intent("com.yourcompany.app.USB_PERMISSION");
+                var intent = new Intent("com.isvol.app.USB_PERMISSION");
                 intent.SetPackage(Application.Context.PackageName);
                 var pendingIntent = PendingIntent.GetBroadcast(Application.Context, 0, intent, PendingIntentFlags.Mutable);
                 _usbManager.RequestPermission(driver.Device, pendingIntent);
@@ -88,9 +83,7 @@ public class AndroidUsbTerminalService : IUsbTerminalService
                 return;
             }
 
-            var connection = _usbManager.OpenDevice(driver.Device);
-            if (connection == null) throw new Exception("Failed to open USB device.");
-
+            var connection = _usbManager.OpenDevice(driver.Device) ?? throw new Exception("Failed to open USB device.");
             _port.Open(connection);
             _port.SetParameters(115200, 8, StopBits.One, Parity.None);
 
@@ -195,6 +188,17 @@ public class AndroidUsbTerminalService : IUsbTerminalService
                 break;
             }
         }
+    }
+
+    private static UsbSerialProber GetCustomProber()
+    {
+        // Start with the default table so standard chips still work
+        var probeTable = UsbSerialProber.DefaultProbeTable;
+
+        // Map it to the standard CDC ACM driver class
+        probeTable.AddProduct(VendorId, ProductId, typeof(CdcAcmSerialDriver));
+
+        return new UsbSerialProber(probeTable);
     }
 }
 #endif
