@@ -6,7 +6,10 @@ namespace AlarmsTuner.Services;
 
 public class UsbTerminalService : IUsbTerminalService
 {
-    private const int BaudRate = 115200;
+    private const int ComBaudRate = 115200;
+    private const int ComDataBits = 8;
+    private const StopBits ComStopBits = StopBits.One;
+    private const Parity ComParity = Parity.None;
     public ConcurrentQueue<TerminalMessage> History { get; } = [];
     
     private SerialPort? _serialPort;
@@ -50,7 +53,7 @@ public class UsbTerminalService : IUsbTerminalService
 
         try
         {
-            _serialPort = new SerialPort(portName, BaudRate, Parity.None, 8, StopBits.One);
+            _serialPort = new SerialPort(portName, ComBaudRate, ComParity, ComDataBits, ComStopBits);
             // Configure suitable timeouts
             _serialPort.ReadTimeout = 500;
             _serialPort.WriteTimeout = 500;
@@ -58,7 +61,7 @@ public class UsbTerminalService : IUsbTerminalService
             _serialPort.Open();
 
             IsConnected = true;
-            History.Enqueue(new TerminalMessage { Text = $"Connected to {portName} at {BaudRate} baud.", IsSent = false });
+            History.Enqueue(new TerminalMessage { Text = $"Connected to {portName} at {ComBaudRate} baud.", IsSent = false });
             StateChanged?.Invoke();
 
             _readCts = new CancellationTokenSource();

@@ -15,6 +15,11 @@ public class AndroidUsbTerminalService : IUsbTerminalService
     private const int VendorId = 0x16C0;
     private const int ProductId = 0x27DD;
 
+    private const int ComBaudRate = 115200;
+    private const int ComDataBits = 8;
+    private const StopBits ComStopBits = StopBits.One;
+    private const Parity ComParity = Parity.None;
+
     public ConcurrentQueue<TerminalMessage> History { get; } = [];
 
     private bool _isConnected;
@@ -85,7 +90,7 @@ public class AndroidUsbTerminalService : IUsbTerminalService
 
             var connection = _usbManager.OpenDevice(driver.Device) ?? throw new Exception("Failed to open USB device.");
             _port.Open(connection);
-            _port.SetParameters(115200, 8, StopBits.One, Parity.None);
+            _port.SetParameters(ComBaudRate, ComDataBits, ComStopBits, ComParity);
 
             IsConnected = true;
             History.Enqueue(new TerminalMessage { Text = $"Connected to {portName} at 115200 baud.", IsSent = false });
