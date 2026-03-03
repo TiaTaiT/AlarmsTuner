@@ -1,13 +1,13 @@
-using System.Collections.ObjectModel;
-using System.IO.Ports;
 using AlarmsTuner.Models;
+using System.Collections.Concurrent;
+using System.IO.Ports;
 
 namespace AlarmsTuner.Services;
 
 public class UsbTerminalService : IUsbTerminalService
 {
     private const int BaudRate = 115200;
-    public ObservableCollection<TerminalMessage> History { get; } = [];
+    public ConcurrentQueue<TerminalMessage> History { get; } = [];
     
     private SerialPort? _serialPort;
 
@@ -38,7 +38,7 @@ public class UsbTerminalService : IUsbTerminalService
         catch (Exception ex)
         {
             // Log or handle exceptions based on platform differences
-            History.Add(new TerminalMessage { Text = $"Error fetching ports: {ex.Message}", IsSent = false });
+            History.Enqueue(new TerminalMessage { Text = $"Error fetching ports: {ex.Message}", IsSent = false });
             StateChanged?.Invoke();
             return Array.Empty<string>();
         }
@@ -58,7 +58,7 @@ public class UsbTerminalService : IUsbTerminalService
             _serialPort.Open();
 
             IsConnected = true;
-            History.Add(new TerminalMessage { Text = $"Connected to {portName} at {BaudRate} baud.", IsSent = false });
+            History.Enqueue(new TerminalMessage { Text = $"Connected to {portName} at {BaudRate} baud.", IsSent = false });
             StateChanged?.Invoke();
 
             _readCts = new CancellationTokenSource();
@@ -66,7 +66,7 @@ public class UsbTerminalService : IUsbTerminalService
         }
         catch (Exception ex)
         {
-            History.Add(new TerminalMessage { Text = $"Failed to connect: {ex.Message}", IsSent = false });
+            History.Enqueue(new TerminalMessage { Text = $"Failed to connect: {ex.Message}", IsSent = false });
             StateChanged?.Invoke();
         }
     }
@@ -87,12 +87,12 @@ public class UsbTerminalService : IUsbTerminalService
             }
 
             IsConnected = false;
-            History.Add(new TerminalMessage { Text = "Disconnected.", IsSent = false });
+            History.Enqueue(new TerminalMessage { Text = "Disconnected.", IsSent = false });
             StateChanged?.Invoke();
         }
         catch (Exception ex)
         {
-            History.Add(new TerminalMessage { Text = $"Error disconnecting: {ex.Message}", IsSent = false });
+            History.Enqueue(new TerminalMessage { Text = $"Error disconnecting: {ex.Message}", IsSent = false });
             StateChanged?.Invoke();
         }
 
@@ -106,7 +106,7 @@ public class UsbTerminalService : IUsbTerminalService
 
         try
         {
-            History.Add(new TerminalMessage { Text = command, IsSent = true });
+            History.Enqueue(new TerminalMessage { Text = command, IsSent = true });
             StateChanged?.Invoke();
 
             // Depending on the target device, it might expect a newline \r\n
@@ -121,7 +121,7 @@ public class UsbTerminalService : IUsbTerminalService
         }
         catch (Exception ex)
         {
-            History.Add(new TerminalMessage { Text = $"Failed to send: {ex.Message}", IsSent = false });
+            History.Enqueue(new TerminalMessage { Text = $"Failed to send: {ex.Message}", IsSent = false });
             StateChanged?.Invoke();
         }
 
@@ -146,7 +146,7 @@ public class UsbTerminalService : IUsbTerminalService
                         string data = _serialPort.Encoding.GetString(buffer, 0, bytesRead);
                         // Optional: you might want to buffer partial strings until a newline is hit for cleaner logs
                         // Here we just append whatever comes in
-                        History.Add(new TerminalMessage { Text = data, IsSent = false });
+                        History.Enqueue(new TerminalMessage { Text = data, IsSent = false });
                         StateChanged?.Invoke();
                     }
                 }
@@ -167,7 +167,7 @@ public class UsbTerminalService : IUsbTerminalService
             {
                 if (!cancellationToken.IsCancellationRequested)
                 {
-                    History.Add(new TerminalMessage { Text = $"Read error: {ex.Message}", IsSent = false });
+                    History.Enqueue(new TerminalMessage { Text = $"Read error: {ex.Message}", IsSent = false });
                     StateChanged?.Invoke();
                 }
                 break;

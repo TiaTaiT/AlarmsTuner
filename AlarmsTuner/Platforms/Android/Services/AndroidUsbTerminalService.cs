@@ -4,7 +4,7 @@ using Android.App;
 using Android.Content;
 using Android.Hardware.Usb;
 using Anotherlab.UsbSerialForAndroid.Driver;
-using System.Collections.ObjectModel;
+using System.Collections.Concurrent;
 using Application = Android.App.Application;
 
 namespace AlarmsTuner.Services;
@@ -15,7 +15,7 @@ public class AndroidUsbTerminalService : IUsbTerminalService
     private const int VendorId = 0x16C0;
     private const int ProductId = 0x27DD;
 
-    public ObservableCollection<TerminalMessage> History { get; } = [];
+    public ConcurrentQueue<TerminalMessage> History { get; } = [];
 
     private bool _isConnected;
     public bool IsConnected
@@ -78,7 +78,7 @@ public class AndroidUsbTerminalService : IUsbTerminalService
                 var pendingIntent = PendingIntent.GetBroadcast(Application.Context, 0, intent, PendingIntentFlags.Mutable);
                 _usbManager.RequestPermission(driver.Device, pendingIntent);
 
-                History.Add(new TerminalMessage { Text = "Requested USB permission. Please accept the prompt and click Connect again.", IsSent = false });
+                History.Enqueue(new TerminalMessage { Text = "Requested USB permission. Please accept the prompt and click Connect again.", IsSent = false });
                 StateChanged?.Invoke();
                 return;
             }
@@ -88,7 +88,7 @@ public class AndroidUsbTerminalService : IUsbTerminalService
             _port.SetParameters(115200, 8, StopBits.One, Parity.None);
 
             IsConnected = true;
-            History.Add(new TerminalMessage { Text = $"Connected to {portName} at 115200 baud.", IsSent = false });
+            History.Enqueue(new TerminalMessage { Text = $"Connected to {portName} at 115200 baud.", IsSent = false });
             StateChanged?.Invoke();
 
             // We start a manual read loop just like the Windows implementation
@@ -97,7 +97,7 @@ public class AndroidUsbTerminalService : IUsbTerminalService
         }
         catch (Exception ex)
         {
-            History.Add(new TerminalMessage { Text = $"Failed to connect: {ex.Message}", IsSent = false });
+            History.Enqueue(new TerminalMessage { Text = $"Failed to connect: {ex.Message}", IsSent = false });
             StateChanged?.Invoke();
         }
     }
@@ -113,12 +113,12 @@ public class AndroidUsbTerminalService : IUsbTerminalService
             _port = null;
 
             IsConnected = false;
-            History.Add(new TerminalMessage { Text = "Disconnected.", IsSent = false });
+            History.Enqueue(new TerminalMessage { Text = "Disconnected.", IsSent = false });
             StateChanged?.Invoke();
         }
         catch (Exception ex)
         {
-            History.Add(new TerminalMessage { Text = $"Error disconnecting: {ex.Message}", IsSent = false });
+            History.Enqueue(new TerminalMessage { Text = $"Error disconnecting: {ex.Message}", IsSent = false });
             StateChanged?.Invoke();
         }
 
@@ -131,7 +131,7 @@ public class AndroidUsbTerminalService : IUsbTerminalService
 
         try
         {
-            History.Add(new TerminalMessage { Text = command, IsSent = true });
+            History.Enqueue(new TerminalMessage { Text = command, IsSent = true });
             StateChanged?.Invoke();
 
             string toSend = (!command.EndsWith("\r") && !command.EndsWith("\n")) ? command + "\r\n" : command;
@@ -141,7 +141,7 @@ public class AndroidUsbTerminalService : IUsbTerminalService
         }
         catch (Exception ex)
         {
-            History.Add(new TerminalMessage { Text = $"Failed to send: {ex.Message}", IsSent = false });
+            History.Enqueue(new TerminalMessage { Text = $"Failed to send: {ex.Message}", IsSent = false });
             StateChanged?.Invoke();
         }
 
@@ -168,7 +168,7 @@ public class AndroidUsbTerminalService : IUsbTerminalService
                     // Dispatch to MainThread to update UI safely
                     MainThread.BeginInvokeOnMainThread(() =>
                     {
-                        History.Add(new TerminalMessage { Text = data, IsSent = false });
+                        History.Enqueue(new TerminalMessage { Text = data, IsSent = false });
                         StateChanged?.Invoke();
                     });
                 }
@@ -181,7 +181,7 @@ public class AndroidUsbTerminalService : IUsbTerminalService
 
                 MainThread.BeginInvokeOnMainThread(() =>
                 {
-                    History.Add(new TerminalMessage { Text = $"Read error: {ex.Message}", IsSent = false });
+                    History.Enqueue(new TerminalMessage { Text = $"Read error: {ex.Message}", IsSent = false });
                     StateChanged?.Invoke();
                     _ = DisconnectAsync();
                 });

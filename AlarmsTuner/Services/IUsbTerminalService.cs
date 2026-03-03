@@ -1,11 +1,11 @@
-using System.Collections.ObjectModel;
 using AlarmsTuner.Models;
+using System.Collections.Concurrent;
 
 namespace AlarmsTuner.Services;
 
 public interface IUsbTerminalService
 {
-    ObservableCollection<TerminalMessage> History { get; }
+    ConcurrentQueue<TerminalMessage> History { get; }
     bool IsConnected { get; }
     
     event Action? StateChanged;
