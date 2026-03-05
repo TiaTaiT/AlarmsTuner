@@ -158,6 +158,24 @@ public class AndroidUsbTerminalService : IUsbTerminalService
         if (_port == null) return;
 
         byte[] buffer = new byte[1024];
+        var stringBuilder = new System.Text.StringBuilder();
+
+        // Local helper to queue a complete line and update the UI
+        void FlushBuffer()
+        {
+            // Only enqueue if we actually have text (this entirely removes blank lines)
+            if (stringBuilder.Length > 0)
+            {
+                string text = stringBuilder.ToString();
+                stringBuilder.Clear();
+
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    History.Enqueue(new TerminalMessage { Text = text, IsSent = false });
+                    StateChanged?.Invoke();
+                });
+            }
+        }
 
         while (!cancellationToken.IsCancellationRequested && IsConnected)
         {
@@ -170,22 +188,40 @@ public class AndroidUsbTerminalService : IUsbTerminalService
                 {
                     string data = System.Text.Encoding.UTF8.GetString(buffer, 0, bytesRead);
 
-                    // Dispatch to MainThread to update UI safely
-                    MainThread.BeginInvokeOnMainThread(() =>
+                    // Process incoming data character by character
+                    foreach (char c in data)
                     {
-                        History.Enqueue(new TerminalMessage { Text = data, IsSent = false });
-                        StateChanged?.Invoke();
-                    });
+                        if (c == '\r' || c == '\n')
+                        {
+                            // On newline, flush the buffered characters as a complete message
+                            FlushBuffer();
+                        }
+                        else
+                        {
+                            // Otherwise, append character to the current line buffer
+                            stringBuilder.Append(c);
+                        }
+                    }
+                }
+                else
+                {
+                    // bytesRead == 0 means a timeout occurred (no new data for 200ms).
+                    // Flush any remaining characters (useful for prompts like ">" that lack newlines).
+                    FlushBuffer();
                 }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 // Timeout exceptions are perfectly normal if no data arrives during the 200ms window
                 if (ex.Message.Contains("timeout", StringComparison.OrdinalIgnoreCase))
+                {
+                    FlushBuffer();
                     continue;
+                }
 
                 MainThread.BeginInvokeOnMainThread(() =>
                 {
+                    FlushBuffer();
                     History.Enqueue(new TerminalMessage { Text = $"Read error: {ex.Message}", IsSent = false });
                     StateChanged?.Invoke();
                     _ = DisconnectAsync();

@@ -136,6 +136,19 @@ public class UsbTerminalService : IUsbTerminalService
         if (_serialPort == null) return;
 
         byte[] buffer = new byte[1024];
+        var stringBuilder = new System.Text.StringBuilder();
+
+        void FlushBuffer()
+        {
+            if (stringBuilder.Length > 0)
+            {
+                string text = stringBuilder.ToString();
+                stringBuilder.Clear();
+
+                History.Enqueue(new TerminalMessage { Text = text, IsSent = false });
+                StateChanged?.Invoke();
+            }
+        }
 
         while (!cancellationToken.IsCancellationRequested && _serialPort.IsOpen)
         {
@@ -147,14 +160,24 @@ public class UsbTerminalService : IUsbTerminalService
                     if (bytesRead > 0)
                     {
                         string data = _serialPort.Encoding.GetString(buffer, 0, bytesRead);
-                        // Optional: you might want to buffer partial strings until a newline is hit for cleaner logs
-                        // Here we just append whatever comes in
-                        History.Enqueue(new TerminalMessage { Text = data, IsSent = false });
-                        StateChanged?.Invoke();
+
+                        foreach (char c in data)
+                        {
+                            if (c == '\r' || c == '\n')
+                            {
+                                FlushBuffer();
+                            }
+                            else
+                            {
+                                stringBuilder.Append(c);
+                            }
+                        }
                     }
                 }
                 else
                 {
+                    // If no data is available, flush whatever is left in the buffer
+                    FlushBuffer();
                     await Task.Delay(50, cancellationToken); // Prevent hot loop
                 }
             }
@@ -164,12 +187,13 @@ public class UsbTerminalService : IUsbTerminalService
             }
             catch (TimeoutException)
             {
-                // Ignore timeouts and continue reading logic
+                FlushBuffer();
             }
             catch (Exception ex)
             {
                 if (!cancellationToken.IsCancellationRequested)
                 {
+                    FlushBuffer();
                     History.Enqueue(new TerminalMessage { Text = $"Read error: {ex.Message}", IsSent = false });
                     StateChanged?.Invoke();
                 }
